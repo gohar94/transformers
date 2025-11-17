@@ -233,21 +233,91 @@ class LlamaAttention(nn.Module):
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        # query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        # key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        # value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
-        cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        query_states_raw = self.q_proj(hidden_states)
+        key_states_raw = self.k_proj(hidden_states)
+        value_states_raw = self.v_proj(hidden_states)
 
-        if past_key_values is not None:
-            # sin and cos are specific to RoPE models; cache_position needed for the static cache
-            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+        query_states = query_states_raw.view(hidden_shape).transpose(1, 2)
+        key_states = key_states_raw.view(hidden_shape).transpose(1, 2)
+        value_states = value_states_raw.view(hidden_shape).transpose(1, 2)
+
+        # save query_states, key_states, value_states to a csv file
+        import pandas as pd
+
+        # Save query_states_raw which has shape [4, 512, 2048]
+        # Flatten to [2048, 2048] to match vLLM's format
+        # query_states_raw_flat = query_states_raw.reshape(-1, query_states_raw.shape[-1])
+        # df = pd.DataFrame({
+        #     "q": query_states_raw_flat.flatten().tolist(),
+        # })
+        # df.to_csv(f"peft_q.csv", index=False)
+        # df = pd.DataFrame({
+        #     "k": key_states_raw.flatten().tolist(),
+        # })
+        # df.to_csv(f"peft_k.csv", index=False)
+        # df = pd.DataFrame({
+        #     "v": value_states_raw.flatten().tolist(),
+        # })
+        # df.to_csv(f"peft_v.csv", index=False)
+
+        # # Also save query_states after view+transpose (before RoPE)
+        # # Shape: [4, 32, 512, 64] -> [2048, 2048]
+        # num_heads = query_states.shape[1]
+        # head_dim = query_states.shape[-1]
+        # query_states_no_rope = query_states.transpose(1, 2).reshape(-1, num_heads * head_dim)
+        # key_states_no_rope = key_states.transpose(1, 2).reshape(-1, num_heads * head_dim)
+        # print(f"PEFT query_states (no RoPE) shape: {query_states_no_rope.shape}")
+        # print(f"PEFT query_states (no RoPE) first few values: {query_states_no_rope[0, :5]}")
+        # df = pd.DataFrame({
+        #     "q": query_states_no_rope.flatten().tolist(),
+        # })
+        # df.to_csv(f"peft_q_no_rope.csv", index=False)
+        # df = pd.DataFrame({
+        #     "k": key_states_no_rope.flatten().tolist(),
+        # })
+        # df.to_csv(f"peft_k_no_rope.csv", index=False)
+        # ss
+
+        # TODO(girfan): HACK!!
+        # cos, sin = position_embeddings
+        # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        # if past_key_values is not None:
+        #     # sin and cos are specific to RoPE models; cache_position needed for the static cache
+        #     cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+        #     key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+        # HACK END
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
             attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "attn_mask": attention_mask.flatten().tolist(),
+        # })
+        # df.to_csv("peft_attn_mask.csv", index=False)
+        # ss
+
+        # import pandas as pd
+        # # save q, k, v to separate csv files
+        # df = pd.DataFrame({
+        #     "q": query_states.flatten().tolist(),
+        # })
+        # df.to_csv("peft_q_in_attn.csv", index=False)
+        # df = pd.DataFrame({
+        #     "k": key_states.flatten().tolist(),
+        # })
+        # df.to_csv("peft_k_in_attn.csv", index=False)
+        # df = pd.DataFrame({
+        #     "v": value_states.flatten().tolist(),
+        # })
+        # df.to_csv("peft_v_in_attn.csv", index=False)
+        # ss
 
         attn_output, attn_weights = attention_interface(
             self,
@@ -261,7 +331,23 @@ class LlamaAttention(nn.Module):
         )
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "attn_output": attn_output.flatten().tolist(),
+        # })
+        # df.to_csv("transformers_attn_output_flat.csv", index=False)
+        # ss
+
         attn_output = self.o_proj(attn_output)
+
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "output": attn_output.flatten().tolist(),
+        # })
+        # df.to_csv("transformers_o_proj_output.csv", index=False)
+        # ss
+
         return attn_output, attn_weights
 
 
@@ -391,6 +477,7 @@ class LlamaModel(LlamaPreTrainedModel):
         hidden_states = inputs_embeds
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
+        i = 0
         for decoder_layer in self.layers[: self.config.num_hidden_layers]:
             hidden_states = decoder_layer(
                 hidden_states,
@@ -401,8 +488,22 @@ class LlamaModel(LlamaPreTrainedModel):
                 position_embeddings=position_embeddings,
                 **kwargs,
             )
+            # import pandas as pd
+            # df = pd.DataFrame({
+            #     "hidden_states": hidden_states.flatten().tolist(),
+            # })
+            # df.to_csv(f"transformers_hidden_states_{i}.csv", index=False)
+            i += 1
 
         hidden_states = self.norm(hidden_states)
+
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "hidden_states": hidden_states.flatten().tolist(),
+        # })
+        # df.to_csv(f"transformers_model_output.csv", index=False)
+        # ss
+
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=past_key_values,
@@ -456,6 +557,15 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
+
+
+        # save input_ids to a csv file
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "input_ids": input_ids.flatten().tolist(),
+        # })
+        # df.to_csv(f"transformers_input_ids.csv", index=False)
+
         outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -470,11 +580,44 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
         hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+
+        slices_hidden_states = hidden_states[:, slice_indices, :]
+        # save slices_hidden_states to a csv file
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "hidden_states": slices_hidden_states.flatten().tolist(),
+        # })
+        # df.to_csv(f"transformers_slices_hidden_states.csv", index=False)
+        # ss
+
+        logits = self.lm_head(slices_hidden_states)
+
+        # # save logits to a csv file
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "logits": logits.flatten().tolist(),
+        # })
+        # df.to_csv(f"transformers_logits.csv", index=False)
 
         loss = None
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+
+        # save labels to a csv file
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "labels": labels.flatten().tolist(),
+        # })
+        # df.to_csv(f"transformers_labels.csv", index=False)
+        # ss
+
+        # # save loss to a csv file
+        # import pandas as pd
+        # df = pd.DataFrame({
+        #     "loss": loss.flatten().tolist(),
+        # })
+        # df.to_csv(f"transformers_loss.csv", index=False)
+        # ss
 
         return CausalLMOutputWithPast(
             loss=loss,

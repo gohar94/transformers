@@ -51,6 +51,23 @@ def sdpa_attention_forward(
     is_causal: Optional[bool] = None,
     **kwargs,
 ) -> tuple[torch.Tensor, None]:
+
+    # save query_states, key_states, value_states to a csv file
+    # import pandas as pd
+    # df = pd.DataFrame({
+    #     "q": query.flatten().tolist(),
+    # })
+    # df.to_csv("peft_q_reshaped.csv", index=False)
+    # df = pd.DataFrame({
+    #     "k": key.flatten().tolist(),
+    # })
+    # df.to_csv("peft_k_reshaped.csv", index=False)
+    # df = pd.DataFrame({
+    #     "v": value.flatten().tolist(),
+    # })
+    # df.to_csv("peft_v_reshaped.csv", index=False)
+    # ss
+
     if kwargs.get("output_attentions", False) or kwargs.get("head_mask") is not None:
         logger.warning_once(
             "`sdpa` attention does not support `output_attentions=True` or `head_mask`."
@@ -80,6 +97,41 @@ def sdpa_attention_forward(
     if torch.jit.is_tracing() and isinstance(is_causal, torch.Tensor):
         is_causal = is_causal.item()
 
+    # DEBUG: Save Q, K, V before SDPA for comparison
+    # import pandas as pd
+    # pd.DataFrame({"q": query.detach().cpu().float().flatten().numpy()}).to_csv("transformers_q.csv", index=False)
+    # pd.DataFrame({"k": key.detach().cpu().float().flatten().numpy()}).to_csv("transformers_k.csv", index=False)
+    # pd.DataFrame({"v": value.detach().cpu().float().flatten().numpy()}).to_csv("transformers_v.csv", index=False)
+    # if attention_mask is not None:
+    #     pd.DataFrame({"mask": attention_mask.detach().cpu().flatten().numpy()}).to_csv("transformers_mask.csv", index=False)
+    # print(f"[Transformers] Saved Q: {query.shape}, K: {key.shape}, V: {value.shape}, is_causal: {is_causal}, dropout: {dropout}, scale: {scaling}")
+
+    # import pandas as pd
+    # df = pd.DataFrame({
+    #     "q": query.flatten().tolist(),
+    # })
+    # df.to_csv(f"peft_q_in_attn.csv", index=False)
+    # df = pd.DataFrame({
+    #     "k": key.flatten().tolist(),
+    # })
+    # df.to_csv(f"peft_k_in_attn.csv", index=False)
+    # df = pd.DataFrame({
+    #     "v": value.flatten().tolist(),
+    # })
+    # df.to_csv(f"peft_v_in_attn.csv", index=False)
+    # ss
+
+    # # Save attention_mask to a csv file
+    # import pandas as pd
+    # print(f"PEFT attention_mask shape: {attention_mask.shape}")
+    # print(f"PEFT attention_mask dtype: {attention_mask.dtype}")
+    # df = pd.DataFrame({
+    #     "attn_mask": attention_mask.flatten().tolist(),
+    # })
+    # df.to_csv(f"transformers_attn_mask.csv", index=False)
+    # print("Saved PEFT attention_mask to transformers_attn_mask.csv")
+    # ss
+
     attn_output = torch.nn.functional.scaled_dot_product_attention(
         query,
         key,
@@ -91,5 +143,12 @@ def sdpa_attention_forward(
         **sdpa_kwargs,
     )
     attn_output = attn_output.transpose(1, 2).contiguous()
+
+    # import pandas as pd
+    # df = pd.DataFrame({
+    #     "attn_output": attn_output.flatten().tolist(),
+    # })
+    # df.to_csv(f"transformers_attn_output.csv", index=False)
+    # ss
 
     return attn_output, None

@@ -2734,8 +2734,26 @@ class Trainer:
 
                             context = implicit_replication
 
+                        # import pandas as pd
+                        # for i, param in enumerate(self.optimizer.param_groups[0]['params']):
+                        #     if param.data is not None:
+                        #         df = pd.DataFrame({
+                        #             "weight": param.data.flatten().tolist(),
+                        #         })
+                        #         df.to_csv(f"peft_weights_before_step_{i}.csv", index=False)
+                        # ss
+
                         with context():
                             self.optimizer.step()
+
+                        # import pandas as pd
+                        # for i, param in enumerate(self.optimizer.param_groups[0]['params']):
+                        #     if param.data is not None:
+                        #         df = pd.DataFrame({
+                        #             "weight": param.data.flatten().tolist(),
+                        #         })
+                        #         df.to_csv(f"peft_weights_after_step_{i}.csv", index=False)
+                        # ss
 
                         self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
 
@@ -4057,7 +4075,30 @@ class Trainer:
                 if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
                     kwargs["scale_wrt_gas"] = False
 
+                # write the weights of the parameters in the optimizer parameter group to a csv file
+                # import csv
+                # with open('peft_weights.csv', 'w') as f:
+                #     writer = csv.writer(f)
+                #     writer.writerow(['parameter', 'weight'])
+                #     for param in self.optimizer.param_groups[0]['params']:
+                #         if param.data is not None:
+                #             writer.writerow([param.name, param.data.flatten().tolist()])
+
                 self.accelerator.backward(loss, **kwargs)
+
+                # visualize loss computation graph with torchviz
+                # import torchviz
+                # torchviz.make_dot(loss, params=dict(model.named_parameters())).render("peft_loss_computation_graph", format="png")
+                # ss
+
+                # import csv
+                # with open('peft_gradients.csv', 'w') as f:
+                #     writer = csv.writer(f)
+                #     writer.writerow(['parameter', 'gradient'])
+                #     for param in self.optimizer.param_groups[0]['params']:
+                #         if param.grad is not None:
+                #             writer.writerow([param.name, param.grad.flatten().tolist()])
+                # ss
 
             return loss.detach()
 
